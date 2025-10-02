@@ -26,7 +26,7 @@ describe("SecondaryMarket", async function () {
       { name: "makerAmount", type: "uint256" },
       { name: "takerToken", type: "address" },
       { name: "takerAmount", type: "uint256" },
-      { name: "nonce", type: "uint256" },
+      { name: "salt", type: "uint256" },
     ],
   };
 
@@ -54,14 +54,14 @@ describe("SecondaryMarket", async function () {
   const createSwapOrder = (
     makerAmount: bigint,
     takerAmount: bigint,
-    nonce: bigint = 0n
+    salt: bigint = 0n
   ) => ({
     maker: maker.account.address,
     makerToken: tokenAAddress,
     makerAmount,
     takerToken: tokenBAddress,
     takerAmount,
-    nonce,
+    salt,
   });
 
   const signOrder = (swapOrder: any, signer: WalletClient = maker) =>
@@ -115,10 +115,12 @@ describe("SecondaryMarket", async function () {
       assert.ok(market);
     });
 
-    it("should initialize with nonce 0 for any address", async function () {
+    it("should return 0 (NONE) for non-existent orders", async function () {
       const { market } = await getContracts();
-      const nonce = await market.read.getNonce([maker.account.address]);
-      assert.equal(nonce, 0n);
+      const dummyHash =
+        "0x0000000000000000000000000000000000000000000000000000000000000001";
+      const status = await market.read.getOrderStatus([dummyHash]);
+      assert.equal(status, 0n);
     });
   });
 
@@ -156,7 +158,7 @@ describe("SecondaryMarket", async function () {
       assert.equal(takerBAfter, (takerBBefore as bigint) - takerAmount);
     });
 
-    it("should increment nonce after successful swap", async function () {
+    it("should mark order as filled after successful swap", async function () {
       const { market, tokenA, tokenB } = await getContracts();
       const makerAmount = parseEther("100");
       const takerAmount = parseEther("200");
@@ -165,9 +167,17 @@ describe("SecondaryMarket", async function () {
       const swapOrder = createSwapOrder(makerAmount, takerAmount);
       const signature = await signOrder(swapOrder);
 
-      assert.equal(await market.read.getNonce([maker.account.address]), 0n);
       await executeSwapAndWait(market, swapOrder, signature);
-      assert.equal(await market.read.getNonce([maker.account.address]), 1n);
+
+      // Try to execute same order again - should revert with OrderAlreadyFilled
+      await assert.rejects(
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyFilled")
+      );
     });
 
     it("should emit SwapExecuted event", async function () {
@@ -185,11 +195,23 @@ describe("SecondaryMarket", async function () {
       const event = logs[logs.length - 1];
 
       assert.ok(logs.length > 0);
-      assert.equal(event.args.maker?.toLowerCase(), maker.account.address.toLowerCase());
-      assert.equal(event.args.taker?.toLowerCase(), taker.account.address.toLowerCase());
-      assert.equal(event.args.makerToken?.toLowerCase(), tokenAAddress.toLowerCase());
+      assert.equal(
+        event.args.maker?.toLowerCase(),
+        maker.account.address.toLowerCase()
+      );
+      assert.equal(
+        event.args.taker?.toLowerCase(),
+        taker.account.address.toLowerCase()
+      );
+      assert.equal(
+        event.args.makerToken?.toLowerCase(),
+        tokenAAddress.toLowerCase()
+      );
       assert.equal(event.args.makerAmount, makerAmount);
-      assert.equal(event.args.takerToken?.toLowerCase(), tokenBAddress.toLowerCase());
+      assert.equal(
+        event.args.takerToken?.toLowerCase(),
+        tokenBAddress.toLowerCase()
+      );
       assert.equal(event.args.takerAmount, takerAmount);
     });
 
@@ -203,27 +225,37 @@ describe("SecondaryMarket", async function () {
       const signature = await signOrder(swapOrder, other);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidSignature")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__InvalidSignature")
       );
     });
 
-    it("should revert with invalid nonce", async function () {
+    it("should allow same amounts with different salt", async function () {
       const { market, tokenA, tokenB } = await getContracts();
       const makerAmount = parseEther("100");
       const takerAmount = parseEther("200");
 
-      await approveTokens(tokenA, tokenB, makerAmount, takerAmount);
-      const swapOrder = createSwapOrder(makerAmount, takerAmount, 5n);
-      const signature = await signOrder(swapOrder);
+      await approveTokens(tokenA, tokenB, makerAmount * 2n, takerAmount * 2n);
 
-      await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidNonce")
-      );
+      // First order with salt 0
+      const swapOrder1 = createSwapOrder(makerAmount, takerAmount, 0n);
+      const signature1 = await signOrder(swapOrder1);
+      await executeSwapAndWait(market, swapOrder1, signature1);
+
+      // Second order with salt 1 - should succeed
+      const swapOrder2 = createSwapOrder(makerAmount, takerAmount, 1n);
+      const signature2 = await signOrder(swapOrder2);
+      await executeSwapAndWait(market, swapOrder2, signature2);
+
+      // Both orders should be successful
+      assert.ok(true);
     });
 
-    it("should prevent replay attacks", async function () {
+    it("should prevent replay attacks with same salt", async function () {
       const { market, tokenA, tokenB } = await getContracts();
       const makerAmount = parseEther("100");
       const takerAmount = parseEther("200");
@@ -235,12 +267,16 @@ describe("SecondaryMarket", async function () {
       await executeSwapAndWait(market, swapOrder, signature);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidNonce")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyFilled")
       );
     });
 
-    it("should allow multiple swaps with correct nonce progression", async function () {
+    it("should allow multiple swaps with different salts", async function () {
       const { market, tokenA, tokenB } = await getContracts();
       const makerAmount = parseEther("100");
       const takerAmount = parseEther("200");
@@ -251,10 +287,10 @@ describe("SecondaryMarket", async function () {
         const swapOrder = createSwapOrder(makerAmount, takerAmount, BigInt(i));
         const signature = await signOrder(swapOrder);
         await executeSwapAndWait(market, swapOrder, signature);
-        
-        const nonce = await market.read.getNonce([maker.account.address]);
-        assert.equal(nonce, BigInt(i + 1));
       }
+
+      // All swaps should complete successfully
+      assert.ok(true);
     });
 
     it("should revert if maker has insufficient token balance", async function () {
@@ -267,9 +303,13 @@ describe("SecondaryMarket", async function () {
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("ERC20InsufficientBalance") || 
-                        error.message.includes("insufficient")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("ERC20InsufficientBalance") ||
+          error.message.includes("insufficient")
       );
     });
 
@@ -283,9 +323,13 @@ describe("SecondaryMarket", async function () {
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("ERC20InsufficientBalance") ||
-                        error.message.includes("insufficient")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("ERC20InsufficientBalance") ||
+          error.message.includes("insufficient")
       );
     });
 
@@ -302,9 +346,13 @@ describe("SecondaryMarket", async function () {
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("ERC20InsufficientAllowance") ||
-                        error.message.includes("allowance")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("ERC20InsufficientAllowance") ||
+          error.message.includes("allowance")
       );
     });
 
@@ -321,9 +369,13 @@ describe("SecondaryMarket", async function () {
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("ERC20InsufficientAllowance") ||
-                        error.message.includes("allowance")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("ERC20InsufficientAllowance") ||
+          error.message.includes("allowance")
       );
     });
 
@@ -338,12 +390,15 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount,
-        nonce: 0n,
+        salt: 0n,
       };
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
         (error: any) => error.message.includes("SecondaryMarket__InvalidMaker")
       );
     });
@@ -359,13 +414,17 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount,
-        nonce: 0n,
+        salt: 0n,
       };
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidMakerToken")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__InvalidMakerToken")
       );
     });
 
@@ -380,13 +439,17 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: "0x0000000000000000000000000000000000000000" as Address,
         takerAmount,
-        nonce: 0n,
+        salt: 0n,
       };
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidTakerToken")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__InvalidTakerToken")
       );
     });
 
@@ -400,13 +463,17 @@ describe("SecondaryMarket", async function () {
         makerAmount: 0n,
         takerToken: tokenBAddress,
         takerAmount,
-        nonce: 0n,
+        salt: 0n,
       };
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidMakerAmount")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__InvalidMakerAmount")
       );
     });
 
@@ -420,28 +487,155 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount: 0n,
-        nonce: 0n,
+        salt: 0n,
       };
       const signature = await signOrder(swapOrder);
 
       await assert.rejects(
-        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
-        (error: any) => error.message.includes("SecondaryMarket__InvalidTakerAmount")
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__InvalidTakerAmount")
       );
     });
   });
 
-  describe("getNonce", function () {
-    it("should return correct nonce for an address", async function () {
+  describe("cancelOrder", function () {
+    it("should allow maker to cancel their order", async function () {
       const { market } = await getContracts();
-      const nonce = await market.read.getNonce([maker.account.address]);
-      assert.equal(nonce, 0n);
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+
+      const hash = await market.write.cancelOrder([swapOrder], {
+        account: maker.account,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      // Verify order is cancelled by trying to execute it
+      const signature = await signOrder(swapOrder);
+      await assert.rejects(
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyCancelled")
+      );
     });
 
-    it("should return 0 for address that has never made a swap", async function () {
+    it("should emit OrderCancelled event", async function () {
       const { market } = await getContracts();
-      const nonce = await market.read.getNonce([other.account.address]);
-      assert.equal(nonce, 0n);
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+
+      await market.write.cancelOrder([swapOrder], {
+        account: maker.account,
+      });
+
+      const logs = await market.getEvents.OrderCancelled();
+      const event = logs[logs.length - 1];
+
+      assert.ok(logs.length > 0);
+      assert.equal(
+        event.args.maker?.toLowerCase(),
+        maker.account.address.toLowerCase()
+      );
+      assert.equal(
+        event.args.makerToken?.toLowerCase(),
+        tokenAAddress.toLowerCase()
+      );
+      assert.equal(event.args.makerAmount, makerAmount);
+      assert.equal(
+        event.args.takerToken?.toLowerCase(),
+        tokenBAddress.toLowerCase()
+      );
+      assert.equal(event.args.takerAmount, takerAmount);
+    });
+
+    it("should revert if non-maker tries to cancel order", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+
+      await assert.rejects(
+        () => market.write.cancelOrder([swapOrder], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidMaker")
+      );
+    });
+
+    it("should revert if order is already filled", async function () {
+      const { market, tokenA, tokenB } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      await approveTokens(tokenA, tokenB, makerAmount, takerAmount);
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+      const signature = await signOrder(swapOrder);
+
+      // Execute the swap first
+      await executeSwapAndWait(market, swapOrder, signature);
+
+      // Try to cancel - should revert
+      await assert.rejects(
+        () => market.write.cancelOrder([swapOrder], { account: maker.account }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyFilled")
+      );
+    });
+
+    it("should revert if order is already cancelled", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+
+      // Cancel the order first
+      const hash = await market.write.cancelOrder([swapOrder], {
+        account: maker.account,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      // Try to cancel again - should revert
+      await assert.rejects(
+        () => market.write.cancelOrder([swapOrder], { account: maker.account }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyCancelled")
+      );
+    });
+
+    it("should prevent execution of cancelled order", async function () {
+      const { market, tokenA, tokenB } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      await approveTokens(tokenA, tokenB, makerAmount, takerAmount);
+      const swapOrder = createSwapOrder(makerAmount, takerAmount);
+      const signature = await signOrder(swapOrder);
+
+      // Cancel the order
+      const hash = await market.write.cancelOrder([swapOrder], {
+        account: maker.account,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      // Try to execute - should revert
+      await assert.rejects(
+        () =>
+          market.write.executeSwap([swapOrder, signature], {
+            account: taker.account,
+          }),
+        (error: any) =>
+          error.message.includes("SecondaryMarket__OrderAlreadyCancelled")
+      );
     });
   });
 });

@@ -10,16 +10,20 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract SecondaryMarket is EIP712, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    error SecondaryMarket__InvalidNonce(
-        uint256 expectedNonce,
-        uint256 actualNonce
-    );
+    enum OrderStatus {
+        NONE,
+        FILLED,
+        CANCELLED
+    }
+
     error SecondaryMarket__InvalidSignature();
     error SecondaryMarket__InvalidMaker();
     error SecondaryMarket__InvalidMakerToken();
     error SecondaryMarket__InvalidTakerToken();
     error SecondaryMarket__InvalidMakerAmount();
     error SecondaryMarket__InvalidTakerAmount();
+    error SecondaryMarket__OrderAlreadyFilled(bytes32 orderHash);
+    error SecondaryMarket__OrderAlreadyCancelled(bytes32 orderHash);
 
     struct SwapOrder {
         address maker;
@@ -27,10 +31,10 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         uint256 makerAmount;
         address takerToken;
         uint256 takerAmount;
-        uint256 nonce;
+        uint256 salt;
     }
 
-    mapping(address maker => uint256 nonce) private s_nonces;
+    mapping(bytes32 orderHash => OrderStatus) private s_orderStatus;
 
     event SwapExecuted(
         address indexed maker,
@@ -41,9 +45,17 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         uint256 takerAmount
     );
 
+    event OrderCancelled(
+        address indexed maker,
+        address indexed makerToken,
+        uint256 makerAmount,
+        address takerToken,
+        uint256 takerAmount
+    );
+
     bytes32 private constant SWAP_ORDER_TYPEHASH =
         keccak256(
-            "SwapOrder(address maker,address makerToken,uint256 makerAmount,address takerToken,uint256 takerAmount,uint256 nonce)"
+            "SwapOrder(address maker,address makerToken,uint256 makerAmount,address takerToken,uint256 takerAmount,uint256 salt)"
         );
 
     constructor() EIP712("SecondaryMarket", "1") {}
@@ -67,20 +79,21 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         if (_order.takerAmount == 0) {
             revert SecondaryMarket__InvalidTakerAmount();
         }
-        if (_order.nonce != s_nonces[_order.maker]) {
-            revert SecondaryMarket__InvalidNonce(
-                s_nonces[_order.maker],
-                _order.nonce
-            );
-        }
 
         bytes32 orderHash = _hash(_order);
+        if (s_orderStatus[orderHash] == OrderStatus.FILLED) {
+            revert SecondaryMarket__OrderAlreadyFilled(orderHash);
+        }
+        if (s_orderStatus[orderHash] == OrderStatus.CANCELLED) {
+            revert SecondaryMarket__OrderAlreadyCancelled(orderHash);
+        }
+
         address signer = ECDSA.recover(orderHash, _signature);
         if (signer != _order.maker) {
             revert SecondaryMarket__InvalidSignature();
         }
 
-        s_nonces[_order.maker] += 1;
+        s_orderStatus[orderHash] = OrderStatus.FILLED;
 
         IERC20 makerToken = IERC20(_order.makerToken);
         IERC20 takerToken = IERC20(_order.takerToken);
@@ -106,8 +119,43 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         );
     }
 
-    function getNonce(address _maker) external view returns (uint256) {
-        return s_nonces[_maker];
+    function cancelOrder(SwapOrder calldata _order) external {
+        if (_order.maker != msg.sender) {
+            revert SecondaryMarket__InvalidMaker();
+        }
+
+        bytes32 orderHash = _hash(_order);
+        if (s_orderStatus[orderHash] == OrderStatus.FILLED) {
+            revert SecondaryMarket__OrderAlreadyFilled(orderHash);
+        }
+        if (s_orderStatus[orderHash] == OrderStatus.CANCELLED) {
+            revert SecondaryMarket__OrderAlreadyCancelled(orderHash);
+        }
+
+        s_orderStatus[orderHash] = OrderStatus.CANCELLED;
+
+        emit OrderCancelled(
+            _order.maker,
+            _order.makerToken,
+            _order.makerAmount,
+            _order.takerToken,
+            _order.takerAmount
+        );
+    }
+
+    function getOrderStatus(
+        bytes32 _orderHash
+    ) external view returns (uint256 status) {
+        OrderStatus orderStatus = s_orderStatus[_orderHash];
+        if (orderStatus == OrderStatus.NONE) {
+            status = 0;
+        } else if (orderStatus == OrderStatus.FILLED) {
+            status = 1;
+        } else if (orderStatus == OrderStatus.CANCELLED) {
+            status = 2;
+        }
+
+        return status;
     }
 
     function _hash(SwapOrder calldata _order) internal view returns (bytes32) {
@@ -121,7 +169,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
                         _order.makerAmount,
                         _order.takerToken,
                         _order.takerAmount,
-                        _order.nonce
+                        _order.salt
                     )
                 )
             );

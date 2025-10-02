@@ -10,7 +10,9 @@ Secondary Market is a smart contract that facilitates peer-to-peer token exchang
 
 - **Signature-based Orders**: Uses EIP-712 for order signing and validation
 - **Peer-to-Peer Swaps**: Direct token exchange between maker and taker
-- **Nonce Management**: Prevents replay attacks with per-user nonce system
+- **Salt-based Orders**: Uses unique salt values for order identification and replay protection
+- **Order Cancellation**: Makers can cancel their orders before execution
+- **Order Status Tracking**: Tracks order states (None, Filled, Cancelled)
 - **Gas Efficient**: Optimized to minimize gas costs
 - **Reentrancy Protection**: Protected against reentrancy attacks
 - **Token Agnostic**: Supports any ERC20 token exchange
@@ -21,7 +23,9 @@ Secondary Market is a smart contract that facilitates peer-to-peer token exchang
 
 Main contract with the following components:
 
-#### Data Structure
+#### Data Structures
+
+**SwapOrder Struct**
 
 ```solidity
 struct SwapOrder {
@@ -30,28 +34,41 @@ struct SwapOrder {
     uint256 makerAmount;  // Amount of maker token
     address takerToken;   // Token requested by maker
     uint256 takerAmount;  // Amount of taker token
-    uint256 nonce;        // Nonce to prevent replay
+    uint256 salt;         // Unique salt for order identification
+}
+```
+
+**OrderStatus Enum**
+
+```solidity
+enum OrderStatus {
+    NONE,       // 0: Order has not been processed
+    FILLED,     // 1: Order has been successfully executed
+    CANCELLED   // 2: Order has been cancelled by maker
 }
 ```
 
 #### Main Functions
 
-- `executeSwap(SwapOrder calldata _order, bytes calldata _signature)`: Execute token exchange
-- `getNonce(address _maker)`: Get current nonce for an address
+- `executeSwap(SwapOrder calldata _order, bytes calldata _signature)`: Execute token exchange between maker and taker
+- `cancelOrder(SwapOrder calldata _order)`: Cancel an order (only maker can cancel their own order)
+- `getOrderStatus(bytes32 _orderHash)`: Get the current status of an order (returns 0, 1, or 2)
 
 #### Events
 
 - `SwapExecuted`: Emitted when swap is successfully executed
+- `OrderCancelled`: Emitted when an order is cancelled by the maker
 
 #### Custom Errors
 
-- `SecondaryMarket__InvalidNonce`: Invalid nonce
 - `SecondaryMarket__InvalidSignature`: Invalid signature
-- `SecondaryMarket__InvalidMaker`: Maker address is zero address
+- `SecondaryMarket__InvalidMaker`: Maker address is zero address or not authorized
 - `SecondaryMarket__InvalidMakerToken`: Maker token address is zero address
 - `SecondaryMarket__InvalidTakerToken`: Taker token address is zero address
 - `SecondaryMarket__InvalidMakerAmount`: Maker amount is zero
 - `SecondaryMarket__InvalidTakerAmount`: Taker amount is zero
+- `SecondaryMarket__OrderAlreadyFilled`: Order has already been executed
+- `SecondaryMarket__OrderAlreadyCancelled`: Order has already been cancelled
 
 ## 🚀 Getting Started
 
@@ -84,19 +101,6 @@ npx hardhat test
 # Run tests with coverage
 npx hardhat coverage
 ```
-
-### Test Coverage
-
-Tests include:
-
-- ✅ Deployment and initialization
-- ✅ Swap execution with valid signature
-- ✅ Signature and nonce validation
-- ✅ Protection against replay attacks
-- ✅ Error handling (insufficient balance, insufficient allowance)
-- ✅ Zero value validation (addresses and amounts)
-- ✅ Multiple swaps with nonce progression
-- ✅ Event emission
 
 ## 📦 Deployment
 
@@ -149,7 +153,7 @@ const types = {
     { name: "makerAmount", type: "uint256" },
     { name: "takerToken", type: "address" },
     { name: "takerAmount", type: "uint256" },
-    { name: "nonce", type: "uint256" },
+    { name: "salt", type: "uint256" },
   ],
 };
 
@@ -159,7 +163,7 @@ const swapOrder = {
   makerAmount: parseEther("100"),
   takerToken: usdcAddress,
   takerAmount: parseUnits("200", 6),
-  nonce: currentNonce,
+  salt: uniqueSalt, // Generate unique salt for each order
 };
 
 const signature = await walletClient.signTypedData({
@@ -192,21 +196,41 @@ await secondaryMarket.write.executeSwap([swapOrder, signature], {
 });
 ```
 
+### 4. Cancel Order (Optional)
+
+Maker can cancel an order before it is executed:
+
+```typescript
+// Only the maker can cancel their own order
+await secondaryMarket.write.cancelOrder([swapOrder], {
+  account: makerAccount,
+});
+```
+
+### 5. Check Order Status
+
+Check the status of an order using its hash:
+
+```typescript
+// Get order hash (you'll need to implement hash calculation)
+const orderHash = await getOrderHash(swapOrder);
+
+// Get order status
+// Returns: 0 (NONE), 1 (FILLED), or 2 (CANCELLED)
+const status = await secondaryMarket.read.getOrderStatus([orderHash]);
+```
+
 ## 🔒 Security
 
 ### Security Features
 
 1. **EIP-712 Signatures**: Secure and user-friendly signing standard
-2. **Nonce System**: Prevents replay attacks
-3. **Reentrancy Guard**: Protection from reentrancy attacks
-4. **SafeERC20**: Safe token transfer handling
-5. **Custom Errors**: Gas-efficient error handling
-
-### Audit Considerations
-
-- Contract uses audited OpenZeppelin libraries
-- Implementation follows DeFi best practices
-- Comprehensive test coverage (>95%)
+2. **Salt-based Order System**: Prevents replay attacks with unique order identifiers
+3. **Order Status Tracking**: Prevents double-spending by tracking filled and cancelled orders
+4. **Reentrancy Guard**: Protection from reentrancy attacks
+5. **SafeERC20**: Safe token transfer handling
+6. **Custom Errors**: Gas-efficient error handling
+7. **Order Cancellation**: Makers can cancel orders to prevent unwanted executions
 
 ## 🛠️ Tech Stack
 
@@ -216,24 +240,3 @@ await secondaryMarket.write.executeSwap([swapOrder, signature], {
 - **OpenZeppelin Contracts**: 5.4.0
 - **TypeScript**: 5.8.3
 - **Node Test Runner**: Built-in
-
-## 📊 Gas Optimization
-
-The contract is optimized for gas efficiency:
-
-- Uses custom errors (cheaper than require strings)
-- Efficient storage usage with mappings
-- SafeERC20 for token transfers
-- Optimized with 200 runs
-
-## 📄 License
-
-MIT
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-
-## 📞 Support
-
-For questions or support, please contact the Owna Finance team.
