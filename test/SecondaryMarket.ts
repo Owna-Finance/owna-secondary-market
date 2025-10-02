@@ -326,6 +326,109 @@ describe("SecondaryMarket", async function () {
                         error.message.includes("allowance")
       );
     });
+
+    it("should revert with zero maker address", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = {
+        maker: "0x0000000000000000000000000000000000000000" as Address,
+        makerToken: tokenAAddress,
+        makerAmount,
+        takerToken: tokenBAddress,
+        takerAmount,
+        nonce: 0n,
+      };
+      const signature = await signOrder(swapOrder);
+
+      await assert.rejects(
+        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidMaker")
+      );
+    });
+
+    it("should revert with zero makerToken address", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = {
+        maker: maker.account.address,
+        makerToken: "0x0000000000000000000000000000000000000000" as Address,
+        makerAmount,
+        takerToken: tokenBAddress,
+        takerAmount,
+        nonce: 0n,
+      };
+      const signature = await signOrder(swapOrder);
+
+      await assert.rejects(
+        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidMakerToken")
+      );
+    });
+
+    it("should revert with zero takerToken address", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+      const takerAmount = parseEther("200");
+
+      const swapOrder = {
+        maker: maker.account.address,
+        makerToken: tokenAAddress,
+        makerAmount,
+        takerToken: "0x0000000000000000000000000000000000000000" as Address,
+        takerAmount,
+        nonce: 0n,
+      };
+      const signature = await signOrder(swapOrder);
+
+      await assert.rejects(
+        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidTakerToken")
+      );
+    });
+
+    it("should revert with zero makerAmount", async function () {
+      const { market } = await getContracts();
+      const takerAmount = parseEther("200");
+
+      const swapOrder = {
+        maker: maker.account.address,
+        makerToken: tokenAAddress,
+        makerAmount: 0n,
+        takerToken: tokenBAddress,
+        takerAmount,
+        nonce: 0n,
+      };
+      const signature = await signOrder(swapOrder);
+
+      await assert.rejects(
+        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidMakerAmount")
+      );
+    });
+
+    it("should revert with zero takerAmount", async function () {
+      const { market } = await getContracts();
+      const makerAmount = parseEther("100");
+
+      const swapOrder = {
+        maker: maker.account.address,
+        makerToken: tokenAAddress,
+        makerAmount,
+        takerToken: tokenBAddress,
+        takerAmount: 0n,
+        nonce: 0n,
+      };
+      const signature = await signOrder(swapOrder);
+
+      await assert.rejects(
+        () => market.write.executeSwap([swapOrder, signature], { account: taker.account }),
+        (error: any) => error.message.includes("SecondaryMarket__InvalidTakerAmount")
+      );
+    });
   });
 
   describe("getNonce", function () {

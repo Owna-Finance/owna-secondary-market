@@ -15,6 +15,11 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         uint256 actualNonce
     );
     error SecondaryMarket__InvalidSignature();
+    error SecondaryMarket__InvalidMaker();
+    error SecondaryMarket__InvalidMakerToken();
+    error SecondaryMarket__InvalidTakerToken();
+    error SecondaryMarket__InvalidMakerAmount();
+    error SecondaryMarket__InvalidTakerAmount();
 
     struct SwapOrder {
         address maker;
@@ -46,7 +51,22 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
     function executeSwap(
         SwapOrder calldata _order,
         bytes calldata _signature
-    ) external nonReentrant {
+    
+        if (_order.maker == address(0)) {
+            revert SecondaryMarket__InvalidMaker();
+        }
+        if (_order.makerToken == address(0)) {
+            revert SecondaryMarket__InvalidMakerToken();
+        }
+        if (_order.takerToken == address(0)) {
+            revert SecondaryMarket__InvalidTakerToken();
+        }
+        if (_order.makerAmount == 0) {
+            revert SecondaryMarket__InvalidMakerAmount();
+        }
+        if (_order.takerAmount == 0) {
+            revert SecondaryMarket__InvalidTakerAmount();
+        }
         if (_order.nonce != s_nonces[_order.maker]) {
             revert SecondaryMarket__InvalidNonce(
                 s_nonces[_order.maker],
