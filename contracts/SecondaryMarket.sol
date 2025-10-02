@@ -51,7 +51,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
     function executeSwap(
         SwapOrder calldata _order,
         bytes calldata _signature
-    
+    ) external nonReentrant {
         if (_order.maker == address(0)) {
             revert SecondaryMarket__InvalidMaker();
         }
