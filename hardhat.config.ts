@@ -2,9 +2,10 @@ import type { HardhatUserConfig } from "hardhat/config";
 
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable } from "hardhat/config";
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
 
 const config: HardhatUserConfig = {
-  plugins: [hardhatToolboxViemPlugin],
+  plugins: [hardhatToolboxViemPlugin, hardhatVerify],
   solidity: {
     profiles: {
       default: {
@@ -22,6 +23,11 @@ const config: HardhatUserConfig = {
           },
         },
       },
+    },
+  },
+  verify: {
+    etherscan: {
+      apiKey: configVariable("ETHERSCAN_API_KEY"),
     },
   },
   networks: {
@@ -42,7 +48,8 @@ const config: HardhatUserConfig = {
     baseSepolia: {
       type: "http",
       chainType: "l1",
-      url: configVariable("BASE_SEPOLIA_RPC_URL"),
+      chainId: 84532,
+      url: "https://base-sepolia.g.alchemy.com/v2/XSrPWJqpANrIaB9n9bEQw",
       accounts: [configVariable("BASE_SEPOLIA_PRIVATE_KEY")],
     },
     base: {
