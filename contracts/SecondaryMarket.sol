@@ -31,7 +31,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         uint256 makerAmount;
         address takerToken;
         uint256 takerAmount;
-        uint256 salt;
+        string salt;
     }
 
     mapping(bytes32 orderHash => OrderStatus) private s_orderStatus;
@@ -39,7 +39,8 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
     event SwapExecuted(
         address indexed maker,
         address indexed taker,
-        address indexed makerToken,
+        string salt,
+        address makerToken,
         uint256 makerAmount,
         address takerToken,
         uint256 takerAmount
@@ -48,6 +49,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
     event OrderCancelled(
         address indexed maker,
         address indexed makerToken,
+        string salt,
         uint256 makerAmount,
         address takerToken,
         uint256 takerAmount
@@ -55,7 +57,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
 
     bytes32 private constant SWAP_ORDER_TYPEHASH =
         keccak256(
-            "SwapOrder(address maker,address makerToken,uint256 makerAmount,address takerToken,uint256 takerAmount,uint256 salt)"
+            "SwapOrder(address maker,address makerToken,uint256 makerAmount,address takerToken,uint256 takerAmount,string salt)"
         );
 
     constructor() EIP712("SecondaryMarket", "1") {}
@@ -112,6 +114,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         emit SwapExecuted(
             _order.maker,
             msg.sender,
+            _order.salt,
             _order.makerToken,
             _order.makerAmount,
             _order.takerToken,
@@ -137,6 +140,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
         emit OrderCancelled(
             _order.maker,
             _order.makerToken,
+            _order.salt,
             _order.makerAmount,
             _order.takerToken,
             _order.takerAmount
@@ -169,7 +173,7 @@ contract SecondaryMarket is EIP712, ReentrancyGuard {
                         _order.makerAmount,
                         _order.takerToken,
                         _order.takerAmount,
-                        _order.salt
+                        keccak256(bytes(_order.salt))
                     )
                 )
             );

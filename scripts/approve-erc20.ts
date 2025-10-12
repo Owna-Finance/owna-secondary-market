@@ -10,12 +10,11 @@ import { baseSepolia } from "viem/chains";
 
 const config = {
   tokenAddress: "0x7b665edd9c725cFBfD9411b73eE88c35Da9a46AF" as Address,
-  spenderAddress: "0xBB3c9651A962ec831f3E30F007ff2254a70f72bf" as Address,
-  privateKey:
-    "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+  spenderAddress: "0x9ED36dd97796bA008677474b8920eba1649e1a91" as Address,
+  privateKey: "0x00000" as `0x${string}`,
   chain: baseSepolia,
   rpcUrl: "https://sepolia.base.org",
-  amount: parseUnits("10", 18),
+  amount: parseUnits("1000", 18),
 };
 
 (async () => {

@@ -16,8 +16,7 @@ console.info(`salt: ${salt}`);
 const config = {
   secondaryMarketAddress:
     "0x9ED36dd97796bA008677474b8920eba1649e1a91" as Address,
-  makerPrivateKey: "0x00000" as Hex,
-  takerPrivateKey: "0x00000" as Hex,
+  makerPrivateKey: "0x0000" as Hex,
   makerTokenAddress: "0x30a6D5ED29ee93782C780C831398081110f1315C" as Address,
   takerTokenAddress: "0x7b665edd9c725cFBfD9411b73eE88c35Da9a46AF" as Address,
   makerAmount: parseUnits("1", 18),
@@ -29,7 +28,6 @@ const config = {
 
 (async () => {
   const makerAccount = privateKeyToAccount(config.makerPrivateKey);
-  const takerAccount = privateKeyToAccount(config.takerPrivateKey);
 
   const order = {
     maker: makerAccount.address,
@@ -40,33 +38,8 @@ const config = {
     salt: config.salt,
   };
 
-  const domain = {
-    name: "SecondaryMarket",
-    version: "1",
-    chainId: config.chain.id,
-    verifyingContract: config.secondaryMarketAddress,
-  };
-
-  const types = {
-    SwapOrder: [
-      { name: "maker", type: "address" },
-      { name: "makerToken", type: "address" },
-      { name: "makerAmount", type: "uint256" },
-      { name: "takerToken", type: "address" },
-      { name: "takerAmount", type: "uint256" },
-      { name: "salt", type: "string" },
-    ],
-  };
-
-  const signature = await makerAccount.signTypedData({
-    domain,
-    types,
-    primaryType: "SwapOrder",
-    message: order,
-  });
-
   const walletClient = createWalletClient({
-    account: takerAccount,
+    account: makerAccount,
     chain: config.chain,
     transport: http(config.rpcUrl),
   });
@@ -74,9 +47,9 @@ const config = {
   const hash = await walletClient.writeContract({
     address: config.secondaryMarketAddress,
     abi: secondaryMarketAbi,
-    functionName: "executeSwap",
-    args: [order, signature],
+    functionName: "cancelOrder",
+    args: [order],
   });
 
-  console.log("Swap executed:", hash);
+  console.log("Order cancelled:", hash);
 })();

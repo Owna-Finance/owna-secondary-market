@@ -26,7 +26,7 @@ describe("SecondaryMarket", async function () {
       { name: "makerAmount", type: "uint256" },
       { name: "takerToken", type: "address" },
       { name: "takerAmount", type: "uint256" },
-      { name: "salt", type: "uint256" },
+      { name: "salt", type: "string" },
     ],
   };
 
@@ -54,7 +54,7 @@ describe("SecondaryMarket", async function () {
   const createSwapOrder = (
     makerAmount: bigint,
     takerAmount: bigint,
-    salt: bigint = 0n
+    salt: string = "0"
   ) => ({
     maker: maker.account.address,
     makerToken: tokenAAddress,
@@ -203,6 +203,7 @@ describe("SecondaryMarket", async function () {
         event.args.taker?.toLowerCase(),
         taker.account.address.toLowerCase()
       );
+      assert.equal(event.args.salt, "0");
       assert.equal(
         event.args.makerToken?.toLowerCase(),
         tokenAAddress.toLowerCase()
@@ -242,12 +243,12 @@ describe("SecondaryMarket", async function () {
       await approveTokens(tokenA, tokenB, makerAmount * 2n, takerAmount * 2n);
 
       // First order with salt 0
-      const swapOrder1 = createSwapOrder(makerAmount, takerAmount, 0n);
+      const swapOrder1 = createSwapOrder(makerAmount, takerAmount, "0");
       const signature1 = await signOrder(swapOrder1);
       await executeSwapAndWait(market, swapOrder1, signature1);
 
       // Second order with salt 1 - should succeed
-      const swapOrder2 = createSwapOrder(makerAmount, takerAmount, 1n);
+      const swapOrder2 = createSwapOrder(makerAmount, takerAmount, "1");
       const signature2 = await signOrder(swapOrder2);
       await executeSwapAndWait(market, swapOrder2, signature2);
 
@@ -284,7 +285,11 @@ describe("SecondaryMarket", async function () {
       await approveTokens(tokenA, tokenB, makerAmount * 3n, takerAmount * 3n);
 
       for (let i = 0; i < 3; i++) {
-        const swapOrder = createSwapOrder(makerAmount, takerAmount, BigInt(i));
+        const swapOrder = createSwapOrder(
+          makerAmount,
+          takerAmount,
+          i.toString()
+        );
         const signature = await signOrder(swapOrder);
         await executeSwapAndWait(market, swapOrder, signature);
       }
@@ -390,7 +395,7 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount,
-        salt: 0n,
+        salt: "0",
       };
       const signature = await signOrder(swapOrder);
 
@@ -414,7 +419,7 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount,
-        salt: 0n,
+        salt: "0",
       };
       const signature = await signOrder(swapOrder);
 
@@ -439,7 +444,7 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: "0x0000000000000000000000000000000000000000" as Address,
         takerAmount,
-        salt: 0n,
+        salt: "0",
       };
       const signature = await signOrder(swapOrder);
 
@@ -463,7 +468,7 @@ describe("SecondaryMarket", async function () {
         makerAmount: 0n,
         takerToken: tokenBAddress,
         takerAmount,
-        salt: 0n,
+        salt: "0",
       };
       const signature = await signOrder(swapOrder);
 
@@ -487,7 +492,7 @@ describe("SecondaryMarket", async function () {
         makerAmount,
         takerToken: tokenBAddress,
         takerAmount: 0n,
-        salt: 0n,
+        salt: "0",
       };
       const signature = await signOrder(swapOrder);
 
@@ -550,6 +555,7 @@ describe("SecondaryMarket", async function () {
         event.args.makerToken?.toLowerCase(),
         tokenAAddress.toLowerCase()
       );
+      assert.equal(event.args.salt, "0");
       assert.equal(event.args.makerAmount, makerAmount);
       assert.equal(
         event.args.takerToken?.toLowerCase(),
