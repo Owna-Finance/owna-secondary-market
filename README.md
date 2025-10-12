@@ -41,7 +41,7 @@ struct SwapOrder {
     uint256 makerAmount;  // Amount of maker token
     address takerToken;   // Token requested by maker
     uint256 takerAmount;  // Amount of taker token
-    uint256 salt;         // Unique salt for order identification
+    string salt;         // Unique salt for order identification
 }
 ```
 
@@ -160,7 +160,7 @@ const types = {
     { name: "makerAmount", type: "uint256" },
     { name: "takerToken", type: "address" },
     { name: "takerAmount", type: "uint256" },
-    { name: "salt", type: "uint256" },
+    { name: "salt", type: "string" },
   ],
 };
 
