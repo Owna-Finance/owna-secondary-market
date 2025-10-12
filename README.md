@@ -2,8 +2,7 @@
 
 A smart contract for YRT (Yield-bearing Real-world asset Token) secondary market that enables peer-to-peer trading with a signature-based order system using EIP-712.
 
-Owna Backend Secondary Market
-⁠- ⁠Endpoint: https://owna-backend-secondary-market-production.up.railway.app
+⁠⁠- Endpoint: https://owna-backend-secondary-market-production.up.railway.app
 - ⁠Docs: https://owna-backend-secondary-market-production.up.railway.app/api-docs
 - Frontend Guide: https://github.com/Owna-Finance/owna-backend-secondary-market?tab=readme-ov-file#%E2%80%8D-frontend-developer-guide
 - ⁠Secondary Market: 0x9ED36dd97796bA008677474b8920eba1649e1a91
